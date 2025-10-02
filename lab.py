@@ -51,7 +51,7 @@ def median_vs_mean(nums):
 
 def n_prefixes(s, n):
     prefixes = [s[:i] for i in range(1, n + 1)]
-    return "".join(prefixes)
+    return "".join(prefixes[::-1])
 
 
 # ---------------------------------------------------------------------

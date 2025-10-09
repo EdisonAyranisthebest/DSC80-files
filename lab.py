@@ -159,16 +159,16 @@ def with_leftover(A):
 
 
 def salary_stats(salary):
-    total_highest = salary.groupby('Team')['Salary'].sum().max()
+    team_totals = salary.groupby('Team', dropna=False)['Salary'].sum()
+    total_highest = team_totals.max()            
 
-    duplicates = salary['Player'].duplicated().any()
+    duplicates = salary['Player'].duplicated(keep=False).any()
 
-    return pd.Series(
-        {
-            'total_highest': int(total_highest),
-            'duplicates': bool(duplicates),
-        }
-    )
+    return pd.Series({
+        'total_highest': total_highest,          
+        'duplicates': duplicates                
+    })
+
 
 
 # ---------------------------------------------------------------------

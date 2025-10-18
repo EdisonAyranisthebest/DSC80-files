@@ -1,8 +1,6 @@
-# lab.py
-
+# lab.py 
 
 import os
-import io
 from pathlib import Path
 import pandas as pd
 import numpy as np
@@ -12,70 +10,57 @@ import numpy as np
 # QUESTION 1
 # ---------------------------------------------------------------------
 
-
 def trick_me():
-    
-    tricky_1 = pd.DataFrame([
-        ["A", "X", 10],
-        ["B", "Y", 20],
-        ["C", "Z", 30],
-        ["D", "W", 40],
-        ["E", "V", 50],
-    ], columns=["Name", "Name", "Age"])
-    
-    # Save and reload
-    tricky_1.to_csv("tricky_1.csv", index=False)
-    tricky_2 = pd.read_csv("tricky_1.csv")
-    
+    df = pd.DataFrame(
+        [["A", "X", 10],
+         ["B", "Y", 20],
+         ["C", "Z", 30],
+         ["D", "W", 40],
+         ["E", "V", 50]],
+        columns=["Name", "Name", "Age"]
+    )
+    df.to_csv("tricky_1.csv", index=False)
+    _ = pd.read_csv("tricky_1.csv") 
     return 3
 
 
 def trick_bool():
-    return [4, 12, 4]
-
+    return [4, 10, 13]
 
 
 # ---------------------------------------------------------------------
 # QUESTION 2
 # ---------------------------------------------------------------------
 
-
-def population_stats(df):
+def population_stats(df: pd.DataFrame) -> pd.DataFrame:
     num_nonnull = df.notna().sum()
     prop_nonnull = num_nonnull / len(df)
     num_distinct = df.nunique(dropna=True)
     prop_distinct = num_distinct / num_nonnull
 
-    stats = pd.DataFrame({
+    return pd.DataFrame({
         "num_nonnull": num_nonnull,
         "prop_nonnull": prop_nonnull,
         "num_distinct": num_distinct,
         "prop_distinct": prop_distinct
     })
 
-    return stats
-
 
 # ---------------------------------------------------------------------
 # QUESTION 3
 # ---------------------------------------------------------------------
 
-
-def most_common(df, N=10):
-    result = pd.DataFrame(index=range(N))  
-    
-    for col in df.columns:
-        counts = df[col].value_counts()     
-        values = counts.index.to_list()     
-        freqs = counts.values.tolist()      
-
-        while len(values) < N:
-            values.append(np.nan)
-            freqs.append(np.nan)
-        
-        result[f"{col}_values"] = values[:N]
+def most_common(df: pd.DataFrame, N: int = 10) -> pd.DataFrame:
+    result = pd.DataFrame(index=range(N))
+    for col in df.columns:  
+        counts = df[col].value_counts(dropna=False)
+        vals = counts.index.tolist()
+        freqs = counts.values.tolist()
+        if len(vals) < N:
+            vals = vals + [np.nan] * (N - len(vals))
+            freqs = freqs + [np.nan] * (N - len(freqs))
+        result[f"{col}_values"] = vals[:N]
         result[f"{col}_counts"] = freqs[:N]
-    
     return result
 
 
@@ -83,17 +68,18 @@ def most_common(df, N=10):
 # QUESTION 4
 # ---------------------------------------------------------------------
 
-
-def super_hero_powers(powers):
+def super_hero_powers(powers: pd.DataFrame):
     powers_only = powers.drop(columns=["hero_names"])
     hero_with_most = powers.loc[powers_only.sum(axis=1).idxmax(), "hero_names"]
 
-    flyers = powers[powers["Flight"] == True]
-    flyers_powers = flyers.drop(columns=["hero_names", "Flight"])
+    flyers = powers[powers.get("Flight", False) == True]
+    flyers_powers = flyers.drop(columns=["hero_names"])
+    if "Flight" in flyers_powers.columns:
+        flyers_powers = flyers_powers.drop(columns=["Flight"])
     most_common_flyer_power = flyers_powers.sum().idxmax()
 
-    one_power = powers_only.sum(axis=1) == 1
-    single_power_heroes = powers[one_power].drop(columns=["hero_names"])
+    one_power_mask = powers_only.sum(axis=1) == 1
+    single_power_heroes = powers.loc[one_power_mask].drop(columns=["hero_names"])
     most_common_single_power = single_power_heroes.sum().idxmax()
 
     return [hero_with_most, most_common_flyer_power, most_common_single_power]
@@ -103,27 +89,77 @@ def super_hero_powers(powers):
 # QUESTION 5
 # ---------------------------------------------------------------------
 
-def clean_heroes(heroes):
+def clean_heroes(heroes: pd.DataFrame) -> pd.DataFrame:
     cleaned = heroes.replace(
-        ["-", "", "None", "none", "N/A", "n/a", "Unknown", "unknown", "null", "Null"], 
+        ["-", "", "None", "none", "N/A", "n/a", "Unknown", "unknown", "null", "Null"],
         np.nan
     )
-    cleaned.loc[cleaned['Weight'] <= 0, 'Weight'] = np.nan
+    for col in ["Weight", "Height"]:
+        numeric = pd.to_numeric(cleaned[col], errors="coerce")
+        cleaned.loc[numeric <= 0, col] = np.nan
+        cleaned[col] = numeric
     return cleaned
 
-# ---------------------------------------------------------------------
-# QUESTION 6
-# ---------------------------------------------------------------------
 
+# ---------------------------------------------------------------------
+# QUESTION 6 
+# ---------------------------------------------------------------------
 
 def super_hero_stats():
+    heroes_fp = Path("data") / "superheroes.csv"
+    df = pd.read_csv(heroes_fp)
+    df = clean_heroes(df)
+
+    NAME_COL = "name"
+    if NAME_COL not in df.columns:
+        NAME_COL = "Name"
+
+    if "Height" in df.columns:
+        df["Height"] = pd.to_numeric(df["Height"], errors="coerce")
+    if "Weight" in df.columns:
+        df["Weight"] = pd.to_numeric(df["Weight"], errors="coerce")
+
+    q1_mask = (df.get("Race") == "Mutant") & (df.get("Hair color") == "No Hair")
+    tallest_mutant_no_hair = (
+        df.loc[q1_mask].sort_values("Height", ascending=False).iloc[0][NAME_COL]
+    )
+
+    known_pub = df["Publisher"].notna()
+    by_pub = df[known_pub].groupby("Publisher", dropna=False)
+    pub_counts = by_pub.size().rename("n")
+    prop_human = by_pub["Race"].apply(lambda s: (s == "Human").mean()).rename("prop_human")
+    pub_stats = pd.concat([pub_counts, prop_human], axis=1)
+    pub_stats = pub_stats.loc[pub_stats["n"] > 5]
+    top_human_pub = pub_stats.sort_values(["prop_human", "Publisher"],
+                                          ascending=[False, True]).index[0]
+
+    mask_gb = df["Alignment"].isin(["good", "bad"]) & df["Height"].notna()
+    mean_heights = df.loc[mask_gb].groupby("Alignment")["Height"].mean()
+    taller_side = "good" if mean_heights.get("good", -np.inf) > mean_heights.get("bad", -np.inf) else "bad"
+
+    def prop_bad_for(publisher):
+        sub = df[df["Publisher"] == publisher]
+        return float((sub["Alignment"] == "bad").mean()) if len(sub) else 0.0
+    worse_pub = "Marvel Comics" if prop_bad_for("Marvel Comics") > prop_bad_for("DC Comics") else "DC Comics"
+
+    known = df["Publisher"].notna()
+    other = df.loc[known & ~df["Publisher"].isin(["Marvel Comics", "DC Comics"]), "Publisher"]
+    top_other_publisher = other.value_counts().idxmax()
+
+    if "Weight" not in df.columns:
+        df["Weight"] = np.nan
+    h_mean, h_std = df["Height"].mean(skipna=True), df["Height"].std(skipna=True)
+    w_mean, w_std = df["Weight"].mean(skipna=True), df["Weight"].std(skipna=True)
+    outlier_mask = (df["Height"] > h_mean + h_std) & (df["Weight"] < w_mean - w_std)
+    outlier_name = df.loc[outlier_mask, NAME_COL].iloc[0]
+
     return [
-        "NAME_OF_TALLEST_MUTANT_NO_HAIR",       
-        "PUBLISHER_WITH_HIGHEST_HUMAN_PROP",   
-        "good" or "bad",                       
-        "Marvel Comics" or "DC Comics",        
-        "PUBLISHER_NOT_MARVEL_OR_DC",          
-        "NAME_OF_OUTLIER_HERO"                 
+        tallest_mutant_no_hair,  
+        top_human_pub,           
+        taller_side,             
+        worse_pub,              
+        top_other_publisher,     
+        outlier_name             
     ]
 
 
@@ -131,69 +167,53 @@ def super_hero_stats():
 # QUESTION 7
 # ---------------------------------------------------------------------
 
-
-def clean_universities(df):
+def clean_universities(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
 
-    # Clean institution names
-    df['institution'] = df['institution'].str.replace('\n', ', ', regex=False)
+    df["institution"] = df["institution"].str.replace("\n", ", ", regex=False)
 
-    # broad_impact → int
-    df['broad_impact'] = df['broad_impact'].astype(int)
+    df["broad_impact"] = df["broad_impact"].astype(int)
 
-    # Split national_rank -> nation, national_rank_cleaned
-    parts = df['national_rank'].str.split(',', n=1, expand=True)
-    df['nation'] = parts[0].str.strip()
-    df['national_rank_cleaned'] = parts[1].str.strip().astype(int)
-    df = df.drop(columns=['national_rank'])
+    parts = df["national_rank"].str.split(",", n=1, expand=True)
+    df["nation"] = parts[0].str.strip()
+    df["national_rank_cleaned"] = parts[1].str.strip().astype(int)
+    df = df.drop(columns=["national_rank"])
 
-    # Normalize country aliases (the dataset-specific 3 + USA variants)
-    df['nation'] = df['nation'].replace({
-        'Czechia': 'Czech Republic',
-        'UK': 'United Kingdom',
-        'Russia': 'Russian Federation',
-        'USA': 'United States',
-        'U.S.A.': 'United States',
+    df["nation"] = df["nation"].replace({
+        "Czechia": "Czech Republic",
+        "UK": "United Kingdom",
+        "Russia": "Russian Federation",
+        "USA": "United States",
+        "U.S.A.": "United States",
     })
 
-    # R1 public: public + has non-null control, city, state
-    df['is_r1_public'] = (
-        (df['control'] == 'Public') &
-        df['control'].notna() & df['city'].notna() & df['state'].notna()
+    df["is_r1_public"] = (
+        (df["control"] == "Public") &
+        df["control"].notna() & df["city"].notna() & df["state"].notna()
     )
 
     return df
 
 
-def university_info(cleaned):
+def university_info(cleaned: pd.DataFrame):
     state_lowest = (
-        cleaned.groupby('state')
+        cleaned.groupby("state")
         .filter(lambda g: len(g) >= 3)
-        .groupby('state')['score'].mean()
+        .groupby("state")["score"].mean()
         .idxmin()
     )
 
-    top100 = cleaned[cleaned['world_rank'] <= 100]
-    prop_faculty = float((top100['quality_of_faculty'] <= 100).mean())  # cast here
+    top100 = cleaned[cleaned["world_rank"] <= 100]
+    prop_faculty = float((top100["quality_of_faculty"] <= 100).mean())
 
     share_private = (
-        cleaned.assign(is_r1_public=cleaned['is_r1_public'].fillna(False))
-        .groupby('state')['is_r1_public']
+        cleaned.assign(is_r1_public=cleaned["is_r1_public"].fillna(False))
+        .groupby("state")["is_r1_public"]
         .apply(lambda s: (s == False).mean())
     )
     num_private_states = int((share_private >= 0.5).sum())
 
-    best_in_nation = cleaned[cleaned['national_rank_cleaned'] == 1]
-    worst_of_best = best_in_nation.loc[best_in_nation['world_rank'].idxmax(), 'institution']
+    top_in_nation = cleaned[cleaned["national_rank_cleaned"] == 1]
+    worst_of_best = top_in_nation.loc[top_in_nation["world_rank"].idxmax(), "institution"]
 
     return [state_lowest, prop_faculty, num_private_states, worst_of_best]
-
-    # 5) R1 public: public + has non-null control, city, state
-    df['is_r1_public'] = (
-        (df['control'] == 'Public') &
-        df['control'].notna() & df['city'].notna() & df['state'].notna()
-    )
-
-    return df
-
-
